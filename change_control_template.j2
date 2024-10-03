@@ -1,0 +1,19 @@
+---
+name: "Copy Token Change Control {{ now() }}"
+notes: Copy CVP Token to Devices
+activities:
+{% for serial in device_serial %}
+  - action: push-token
+    name: "Push Token to {{ serial }}"
+    stage: "Token Push"
+    arguments:
+      - name: DeviceID
+        value: "{{ serial }}"
+      - name: filename
+        value: "/tmp/token2"
+      - name: token
+        value: "{{ token }}"
+{% endfor %}
+stages:
+  - name: "Token Push"
+    mode: parallel

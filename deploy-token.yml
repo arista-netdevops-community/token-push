@@ -1,0 +1,95 @@
+---
+- name: Deploy CVP Token from CVP Cluster B via CVP Cluster A
+  hosts: CLOUDVISION
+  gather_facts: false
+  connection: local
+  vars:
+    # Set as required.  All devices in this group will have tokens deployed
+    fabric_name: FABRIC
+
+    # Hostname and service account token of CVP Cluster
+    # to fetch enrollment token from
+    cvp_src_cluster: www.arista.io
+    cvp_src_token: "{{ lookup('ansible.builtin.env', 'CVAAS_TOKEN')}}"
+    cvp_cc_output: cc_output.yml
+
+    # This URL & token_request may only work in CVaaS currently.
+    # Alternate URL/token_request are below.
+    # The "Extract Token" task below also requires changing.
+    url: "https://{{ cvp_src_cluster }}/api/resources/admin.Enrollment/AddEnrollmentToken"
+    token_request: |
+      {
+        "enrollmentToken": {
+          "validFor": "86400s",
+          "reenrollDevices": ["*"]
+        }
+      }
+
+    # Required for older CVP as above.
+    # url: "https://{{ cvp_src_cluster }}/cvpservice/enroll/createToken"
+    # token_request: |
+    #   {
+    #     "duration": "24h",
+    #     "reenrollDevices": ["*"]
+    #   }
+
+  tasks:
+    - name: Fetch Token from Existing CloudVision
+      ansible.builtin.uri:
+        url: "{{ url }}"
+        headers:
+          Authorization: "Bearer {{ cvp_src_token }}"
+        method: POST
+        body: "{{ token_request }}"
+        body_format: json
+      register: token_response
+
+    - name: Extract Token
+      ansible.builtin.set_fact:
+        token: "{{ token_response.json.enrollmentToken.token }}"
+        # token: "{{ token_response.json.data }}"
+
+    - name: Get Device Serial Numbers from CVP
+      arista.cvp.cv_facts_v3:
+        facts:
+          - devices
+        regexp_filter: "{{ item.split('.')[0] }}"
+      register: device_facts
+      loop: "{{ groups[fabric_name] }}"
+
+    - name: Extract Device Serial Numbers
+      ansible.builtin.set_fact:
+        device_serial: "{{ device_serial | default([]) + [item.data.cvp_devices[0].serialNumber] }}"
+      loop: "{{ device_facts.results }}"
+      loop_control:
+        label: "{{ item.data.cvp_devices[0].serialNumber }}"
+
+    - name: "Template out Change Control"
+      ansible.builtin.template:
+        src: "change_control_template.j2"
+        dest: "{{ cvp_cc_output }}"
+        mode: "0644"
+
+    - name: "Load Change Control vars"
+      ansible.builtin.include_vars:
+        file: "{{ cvp_cc_output }}"
+        name: cvp_cc
+
+    - name: "Create a change control on CVP"
+      arista.cvp.cv_change_control_v3:
+        state: set
+        change: "{{ cvp_cc }}"
+      register: cv_change_control
+
+# Uncomment these to approve and execute change control automatically
+#    - name: "Approve a change control on CVP
+#      arista.cvp.cv_change_control_v3:
+#        state: approve
+#        change_id: ["{{ cv_change_control.data.id }}"]
+#      register: cv_change_control
+#
+#    - name: "Execute a change control on CVP
+#      arista.cvp.cv_change_control_v3:
+#        state: execute
+#        change_id: ["{{ cv_change_control.data.value.key.id }}"]
+#      register: cv_change_control

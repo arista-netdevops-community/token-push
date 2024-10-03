@@ -1,0 +1,40 @@
+---
+all:
+  children:
+    CLOUDVISION:
+      hosts:
+        cvaas:
+          ansible_host: www.arista.io
+          ansible_httpapi_host: "{{ ansible_host }}"
+          ansible_user: cvaas
+          ansible_password: "{{ lookup('ansible.builtin.env', 'CVAAS_TOKEN')}}"
+          ansible_connection: httpapi
+          ansible_httpapi_use_ssl: true
+          ansible_httpapi_validate_certs: false
+          ansible_network_os: eos
+          ansible_httpapi_port: 443
+          ansible_python_interpreter: $(which python3)
+          exec_tasks: false
+    FABRIC:
+      children:
+        LEAFS:
+          hosts:
+            A2-JS:
+              ansible_host: 10.10.10.10
+            B1-JS:
+              ansible_host: 10.10.10.11
+            B2-JS:
+              ansible_host: 10.10.10.20
+            C1-JS:
+              ansible_host: 10.10.10.21
+      vars:
+        ansible_connection: ansible.netcommon.httpapi
+        ansible_network_os: arista.eos.eos
+        ansible_user: ansible
+        ansible_password: ansible
+        ansible_become: true
+        ansible_become_method: enable
+        ansible_httpapi_use_ssl: true
+        ansible_httpapi_validate_certs: false
+        ansible_httpapi_ciphers: AES256-SHA:DHE-RSA-AES256-SHA:AES128-SHA:DHE-RSA-AES128-SHA
+        ansible_python_interpreter: $(which python3)
